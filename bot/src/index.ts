@@ -44,7 +44,9 @@ async function main() {
 
     ws.on("open", async function open() {
       console.log("WebSocket is open");
-      await client.connect();
+      if (!client.isOpen) {
+        await client.connect();
+      }
       sendRequest(ws); // Send a request once the WebSocket is open
       startPing(ws); // Start sending pings
     });
