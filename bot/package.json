@@ -12,11 +12,8 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@solana/web3.js": "^1.98.0",
     "redis": "^4.7.0",
-    "typescript": "^5.8.2",
-    "ws": "^8.18.1"
-  },
-  "devDependencies": {
-    "@types/ws": "^8.5.14"
+    "typescript": "^5.8.2"
   }
 }

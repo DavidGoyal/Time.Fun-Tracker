@@ -1,94 +1,63 @@
+import { Connection, PublicKey } from "@solana/web3.js";
+import { RPC_URL } from "./constants/constant";
 import { createClient } from "redis";
-import WebSocket from "ws";
-import { WS_URL } from "./constants/constant";
 
 const client = createClient();
 async function main() {
-  try {
-    // Create a WebSocket connection
-    const ws = new WebSocket(WS_URL);
+  const connection = new Connection(RPC_URL, "confirmed");
+  await client.connect();
 
-    // Function to send a request to the WebSocket server
-    function sendRequest(ws: WebSocket) {
-      const request = {
-        jsonrpc: "2.0",
-        id: 420,
-        method: "transactionSubscribe",
-        params: [
-          {
-            accountInclude: ["HW2Cg9ZYRGZRzXfdgc1pgGxdYduyVvYrYkg1H2PVLo1H"],
-          },
-          {
-            commitment: "processed",
-            encoding: "jsonParsed",
-            transactionDetails: "full",
-            showRewards: true,
-            maxSupportedTransactionVersion: 0,
-          },
-        ],
-      };
-      ws.send(JSON.stringify(request));
-    }
+  // The wallet address you want to track
+  const WALLET_TO_TRACK = "HW2Cg9ZYRGZRzXfdgc1pgGxdYduyVvYrYkg1H2PVLo1H";
 
-    // Function to send a ping to the WebSocket server
-    function startPing(ws: WebSocket) {
-      setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.ping();
-          console.log("Ping sent");
-        }
-      }, 30000); // Ping every 30 seconds
-    }
+  console.log(`Starting to monitor transactions for ${WALLET_TO_TRACK}`);
 
-    // Define WebSocket event handlers
+  // Subscribe to account changes
+  const subscriptionId = connection.onLogs(
+    new PublicKey(WALLET_TO_TRACK),
+    (logs, ctx) => {
+      console.log("New transaction detected!");
+      console.log("Signature:", logs.signature);
 
-    ws.on("open", async function open() {
-      console.log("WebSocket is open");
-      if (!client.isOpen) {
-        await client.connect();
-      }
-      sendRequest(ws); // Send a request once the WebSocket is open
-      startPing(ws); // Start sending pings
-    });
+      // Get detailed transaction info
+      connection
+        .getParsedTransaction(logs.signature, {
+          maxSupportedTransactionVersion: 0,
+        })
+        .then(async (tx) => {
+          if (tx) {
+            const allInstructions = tx.transaction.message.instructions;
+            console.log(allInstructions);
+            const instruction = allInstructions.filter((instruction: any) => {
+              console.log(instruction?.parsed?.info);
+              return instruction?.parsed?.type === "initializeMint";
+            });
 
-    ws.on("message", async function incoming(data) {
-      const messageStr = data.toString("utf8");
-      try {
-        const messageObj = JSON.parse(messageStr);
-        const allInstructions =
-          messageObj?.params?.result?.transaction?.meta?.innerInstructions[0]
-            ?.instructions || [];
-        const instruction = allInstructions.filter((instruction: any) => {
-          return instruction?.parsed?.type === "initializeMint";
-        });
+            if (instruction.length == 0) return;
+            //@ts-ignore
+            console.log(instruction[0]?.parsed?.info);
+            //@ts-ignore
+            const tokenAddress = instruction[0]?.parsed?.info?.mint;
 
-        if (instruction.length == 0) return;
-        console.log(instruction[0]?.parsed?.info);
-        const tokenAddress = instruction[0]?.parsed?.info?.mint;
+            await client.lPush(
+              "timefun",
+              JSON.stringify({
+                address: tokenAddress,
+              })
+            );
+          }
+        })
+        .catch(console.error);
+    },
+    "confirmed"
+  );
 
-        await client.lPush(
-          "timefun",
-          JSON.stringify({
-            address: tokenAddress,
-          })
-        );
-        console.log(instruction);
-      } catch (e) {
-        console.error("Failed to parse JSON:", e);
-      }
-    });
-
-    ws.on("error", function error(err) {
-      console.error("WebSocket error:", err);
-    });
-
-    ws.on("close", function close() {
-      console.log("WebSocket is closed");
-      main();
-    });
-  } catch (error) {
-    console.error("Error:", error);
-  }
+  // Keep the script running
+  process.on("SIGINT", async () => {
+    console.log("Removing subscription...");
+    await connection.removeOnLogsListener(subscriptionId);
+    process.exit();
+  });
 }
 
-main();
+main().catch(console.error);

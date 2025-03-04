@@ -1,1 +1,1 @@
-export const WS_URL = "";
+export const RPC_URL = "";
