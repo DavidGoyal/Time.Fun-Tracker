@@ -6,38 +6,49 @@ import axios from "axios";
 import { createClient } from "redis";
 import { RPC_URL, WEBHOOK_URL } from "./constants/constant";
 
-const client = createClient();
 const webhookUrl = WEBHOOK_URL;
+const client = createClient();
 
 export async function main() {
+  await client.connect();
   const connection = new Connection(RPC_URL);
   const umi = createUmi(connection);
 
-  await client.connect();
   while (true) {
     let mintAddress = null;
     try {
       const response = await client.brPop("timefun", 0);
       if (!response?.element) continue;
       const parsedResponse = JSON.parse(response?.element);
-      const mintAddress = parsedResponse.address;
+      mintAddress = parsedResponse.address;
       if (!mintAddress) continue;
+      let name = null;
 
       // Fetch the metadata account
+
       const asset = await fetchDigitalAsset(umi, publicKey(mintAddress));
       console.log(asset.metadata.name);
+
+      if (!asset.metadata.name) {
+        throw new Error(`Failed to fetch metadata for ${mintAddress}`);
+      }
+      name = asset.metadata.name;
 
       const discordEmbedMessage = {
         username: "Time Fun Token Creation",
         embeds: [
           {
             title: "Time Fun Token Creation",
-            description: `${asset.metadata.name} has been created`,
+            description: `${name} has been created`,
             color: 5814783,
             fields: [
               {
                 name: "Token Name",
-                value: asset.metadata.name,
+                value: name,
+              },
+              {
+                name: "Token Address",
+                value: mintAddress,
               },
             ],
           },
@@ -50,6 +61,7 @@ export async function main() {
     } catch (error) {
       console.log(error);
       if (mintAddress) {
+        await new Promise((r) => setTimeout(r, 2000));
         await client.lPush("timefun", JSON.stringify({ address: mintAddress }));
       }
     }

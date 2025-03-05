@@ -30,13 +30,10 @@ async function main() {
               const allInstructions = tx.transaction.message.instructions;
               console.log(allInstructions);
               const instruction = allInstructions.filter((instruction: any) => {
-                console.log(instruction?.parsed?.info);
                 return instruction?.parsed?.type === "initializeMint";
               });
 
               if (instruction.length == 0) return;
-              //@ts-ignore
-              console.log(instruction[0]?.parsed?.info);
               //@ts-ignore
               const tokenAddress = instruction[0]?.parsed?.info?.mint;
 
